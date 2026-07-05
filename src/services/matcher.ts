@@ -1,5 +1,6 @@
 import { DatabaseService, Post, KeywordSub, BaseConfig } from './database';
 import { TelegramService } from './telegram';
+import { NtfyService } from './ntfy';
 
 export interface MatchResult {
   matched: boolean;
@@ -30,8 +31,60 @@ export interface PushResult {
 export class MatcherService {
   constructor(
     private dbService: DatabaseService,
-    private telegramService: TelegramService
+    private telegramService?: TelegramService,
+    private ntfyService: NtfyService = new NtfyService()
   ) {}
+
+  private canPushToTelegram(config: BaseConfig): boolean {
+    return !!(this.telegramService && config.bot_token && config.chat_id);
+  }
+
+  private hasPushChannel(config: BaseConfig): boolean {
+    return this.canPushToTelegram(config) || this.ntfyService.isConfigured(config);
+  }
+
+  private async pushPostToConfiguredChannels(post: Post, matchedSub: KeywordSub, config: BaseConfig): Promise<boolean> {
+    if (config.stop_push === 1 || !this.hasPushChannel(config)) {
+      return false;
+    }
+
+    const deliveryTasks: Array<Promise<{ channel: string; success: boolean }>> = [];
+
+    if (this.canPushToTelegram(config) && this.telegramService) {
+      deliveryTasks.push(
+        this.telegramService.sendPost(post, matchedSub, config.chat_id)
+          .then(success => ({ channel: 'Telegram', success }))
+      );
+    }
+
+    if (this.ntfyService.isConfigured(config)) {
+      deliveryTasks.push(
+        this.ntfyService.sendPost(post, matchedSub, config)
+          .then(success => ({ channel: 'ntfy', success }))
+      );
+    }
+
+    const deliveryResults = await Promise.all(deliveryTasks);
+    const success = deliveryResults.some(result => result.success);
+
+    if (success) {
+      await this.dbService.updatePostPushStatus(
+        post.post_id,
+        1,
+        matchedSub.id,
+        new Date().toISOString()
+      );
+    }
+
+    const failedChannels = deliveryResults
+      .filter(result => !result.success)
+      .map(result => result.channel);
+    if (failedChannels.length > 0) {
+      console.warn(`文章 ${post.post_id} 部分推送通道失败: ${failedChannels.join(', ')}`);
+    }
+
+    return success;
+  }
 
   /**
    * 检查文章是否匹配任何订阅
@@ -311,7 +364,7 @@ export class MatcherService {
           continue;
         }
 
-        const pushSuccess = await this.telegramService.pushPost(post, firstMatch.subscription);
+        const pushSuccess = await this.pushPostToConfiguredChannels(post, firstMatch.subscription, config);
         
         if (pushSuccess) {
           result.pushed++;
@@ -415,9 +468,10 @@ export class MatcherService {
     message: string;
   }> {
     try {
-      const [post, subscription] = await Promise.all([
+      const [post, subscription, config] = await Promise.all([
         this.dbService.getPostByPostId(postId),
-        this.dbService.getKeywordSubById(subscriptionId)
+        this.dbService.getKeywordSubById(subscriptionId),
+        this.dbService.getBaseConfig()
       ]);
 
       if (!post) {
@@ -434,7 +488,14 @@ export class MatcherService {
         };
       }
 
-      const pushSuccess = await this.telegramService.pushPost(post, subscription);
+      if (!config) {
+        return {
+          success: false,
+          message: '配置不存在'
+        };
+      }
+
+      const pushSuccess = await this.pushPostToConfiguredChannels(post, subscription, config);
 
       if (pushSuccess) {
         return {

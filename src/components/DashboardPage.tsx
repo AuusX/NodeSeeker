@@ -508,7 +508,7 @@ export const DashboardPage: FC = () => {
                       <input type="checkbox" id="stopPush" name="stopPush" style="width: 18px; height: 18px; cursor: pointer; margin: 0;" />
                       <div style="pointer-events: none;">
                         <div style="font-weight: 500; color: #333;">停止推送</div>
-                        <div style="font-size: 12px; color: #666;">勾选后将暂停所有 Telegram 消息推送</div>
+                        <div style="font-size: 12px; color: #666;">勾选后将暂停所有推送通道</div>
                       </div>
                     </label>
                     
@@ -520,7 +520,33 @@ export const DashboardPage: FC = () => {
                       </div>
                     </label>
                   </div>
-                  
+
+                  <div style="background: white; border-radius: 6px; border: 1px solid #e0e0e0; padding: 16px;">
+                    <h4 style="font-size: 14px; margin-bottom: 14px; color: #333;">ntfy 推送</h4>
+                    <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; margin-bottom: 16px;" class="checkbox-label">
+                      <input type="checkbox" id="ntfyEnabled" name="ntfyEnabled" style="width: 18px; height: 18px; cursor: pointer; margin: 0;" />
+                      <div style="pointer-events: none;">
+                        <div style="font-weight: 500; color: #333;">启用 ntfy</div>
+                        <div style="font-size: 12px; color: #666;">匹配成功后同时发送到 ntfy topic</div>
+                      </div>
+                    </label>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px;" class="form-grid">
+                      <div>
+                        <label for="ntfyServerUrl" style="display: block; margin-bottom: 6px; font-weight: 500; color: #333;">服务地址</label>
+                        <input type="url" id="ntfyServerUrl" name="ntfyServerUrl" placeholder="https://ntfy.sh" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;" />
+                      </div>
+                      <div>
+                        <label for="ntfyTopic" style="display: block; margin-bottom: 6px; font-weight: 500; color: #333;">Topic</label>
+                        <input type="text" id="ntfyTopic" name="ntfyTopic" placeholder="请输入 ntfy topic" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;" />
+                      </div>
+                      <div>
+                        <label for="ntfyToken" style="display: block; margin-bottom: 6px; font-weight: 500; color: #333;">访问令牌</label>
+                        <input type="password" id="ntfyToken" name="ntfyToken" placeholder="可选，留空则不修改" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;" />
+                      </div>
+                    </div>
+                    <p id="ntfyTokenStatus" style="font-size: 12px; color: #666; margin-top: 8px;">访问令牌未配置</p>
+                  </div>
+
                   <button type="submit" style="padding: 12px 24px; background: #9c27b0; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; align-self: flex-start;">
                     💾 保存推送设置
                   </button>
@@ -539,6 +565,9 @@ export const DashboardPage: FC = () => {
                   </button>
                   <button id="refreshInfoBtn" style="padding: 12px 24px; background: #ff9800; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
                     🔄 刷新状态
+                  </button>
+                  <button id="testNtfyBtn" style="padding: 12px 24px; background: #009688; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
+                    📣 测试 ntfy
                   </button>
                 </div>
               </div>
@@ -708,4 +737,4 @@ export const DashboardPage: FC = () => {
       <script src="/js/dashboard.js"></script>
     </>
   )
-} 
+}

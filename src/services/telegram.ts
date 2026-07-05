@@ -588,55 +588,61 @@ ${userBindingStatus}
     await ctx.reply('✅ **绑定已解除**\n\n您将不再接收推送消息。如需重新绑定，请发送 /start 命令。', { parse_mode: 'Markdown' });
   }
 
+  private buildPostMessage(post: Post, matchedSub: KeywordSub): string {
+    // 构建关键词字符串，用markdown格式的标签包裹
+    const keywords = [matchedSub.keyword1, matchedSub.keyword2, matchedSub.keyword3]
+      .filter(k => k && k.trim().length > 0)
+      .join(' ');
+
+    const keywordsStr = keywords ? `🎯 ${keywords}` : '';
+
+    const creator = matchedSub.creator ? `👤 ${matchedSub.creator}` : '';
+    const category = matchedSub.category ? `🗂️ ${this.getCategoryName(matchedSub.category)}` : '';
+
+    // 构建帖子链接
+    const postUrl = `https://www.nodeseek.com/post-${post.post_id}-1`;
+
+    // 去除 post.title 会影响markdown链接的符号
+    const title = post.title
+      .replace(/\[/g, "「")
+      .replace(/\]/g, "」")
+      .replace(/\(/g, "（")
+      .replace(/\)/g, "）");
+
+    return `
+**${keywordsStr} ${creator} ${category}**
+
+**[${title}](${postUrl})**
+      `;
+  }
+
+  async sendPost(post: Post, matchedSub: KeywordSub, chatId: string): Promise<boolean> {
+    return this.sendMessage(chatId, this.buildPostMessage(post, matchedSub));
+  }
+
   /**
    * 推送文章到 Telegram
    */
   async pushPost(post: Post, matchedSub: KeywordSub): Promise<boolean> {
     try {
       const config = await this.dbService.getBaseConfig();
-      if (!config || config.stop_push === 1) {
+      if (!config || config.stop_push === 1 || !config.chat_id) {
         return false;
       }
 
-      // 构建关键词字符串，用markdown格式的标签包裹
-      const keywords = [matchedSub.keyword1, matchedSub.keyword2, matchedSub.keyword3]
-        .filter(k => k && k.trim().length > 0)
-        .join(' ');
+      const success = await this.sendPost(post, matchedSub, config.chat_id);
 
-      const keywordsStr = keywords ? `🎯 ${keywords}` : '';
-
-      const creator = matchedSub.creator ? `👤 ${matchedSub.creator}` : '';
-      const category = matchedSub.category ? `🗂️ ${this.getCategoryName(matchedSub.category)}` : '';
-
-      // 构建帖子链接
-      const postUrl = `https://www.nodeseek.com/post-${post.post_id}-1`;
-
-      // 去除 post.title 会影响markdown链接的符号
-      const title = post.title
-        .replace(/\[/g, "「")
-        .replace(/\]/g, "」")
-        .replace(/\(/g, "（")
-        .replace(/\)/g, "）");
-
-      const text = `
-**${keywordsStr} ${creator} ${category}**
-
-**[${title}](${postUrl})**
-      `;
-
-      const success = await this.sendMessage(config.chat_id, text);
-      
       if (success) {
         // 更新推送状态
         await this.dbService.updatePostPushStatus(
-          post.post_id, 
+          post.post_id,
           1, // 已推送
           matchedSub.id,
           new Date().toISOString()
         );
         return true;
       }
-      
+
       return false;
     } catch (error) {
       console.error('推送文章失败:', error);

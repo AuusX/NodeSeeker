@@ -7,6 +7,7 @@ import { DatabaseService } from './services/database'
 import { AuthService } from './services/auth'
 import { RSSService } from './services/rss'
 import { TelegramService } from './services/telegram'
+import { NtfyService } from './services/ntfy'
 import { MatcherService } from './services/matcher'
 
 // 导入中间件
@@ -74,14 +75,15 @@ export default {
       // RSS抓取和推送任务（每分钟执行）
       const config = await dbService.getBaseConfig()
 
-      if (!config || !config.bot_token) {
+      const ntfyService = new NtfyService()
+      if (!config || (!config.bot_token && !ntfyService.isConfigured(config))) {
         console.log('系统未配置，跳过RSS抓取任务')
         return
       }
 
       const rssService = new RSSService(dbService)
-      const telegramService = new TelegramService(dbService, config.bot_token)
-      const matcherService = new MatcherService(dbService, telegramService)
+      const telegramService = config.bot_token ? new TelegramService(dbService, config.bot_token) : undefined
+      const matcherService = new MatcherService(dbService, telegramService, ntfyService)
 
       // 1. 抓取新的RSS数据
       console.log('开始抓取RSS数据...')

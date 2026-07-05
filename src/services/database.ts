@@ -8,6 +8,10 @@ export interface BaseConfig {
   bound_user_username?: string;
   stop_push: number;
   only_title: number;
+  ntfy_enabled?: number;
+  ntfy_server_url?: string | null;
+  ntfy_topic?: string | null;
+  ntfy_token?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -101,6 +105,21 @@ export class DatabaseService {
     }
   }
 
+  private async ensureBaseConfigColumns(): Promise<void> {
+    const result = await this.db.prepare('PRAGMA table_info(base_config)').all();
+    const columns = new Set((result.results as Array<{ name: string }>).map(column => column.name));
+    const missingColumns: Array<{ name: string; definition: string }> = [
+      { name: 'ntfy_enabled', definition: 'ntfy_enabled INTEGER DEFAULT 0' },
+      { name: 'ntfy_server_url', definition: "ntfy_server_url TEXT DEFAULT 'https://ntfy.sh'" },
+      { name: 'ntfy_topic', definition: 'ntfy_topic TEXT DEFAULT NULL' },
+      { name: 'ntfy_token', definition: 'ntfy_token TEXT DEFAULT NULL' }
+    ].filter(column => !columns.has(column.name));
+
+    for (const column of missingColumns) {
+      await this.db.prepare(`ALTER TABLE base_config ADD COLUMN ${column.definition}`).run();
+    }
+  }
+
   /**
    * 初始化数据库表
    */
@@ -109,6 +128,7 @@ export class DatabaseService {
       // 检查表是否已存在，如果存在则跳过初始化
       const tablesExist = await this.checkTablesExist();
       if (tablesExist) {
+        await this.ensureBaseConfigColumns();
         console.log('数据库表已存在，跳过初始化');
         return;
       }
@@ -127,6 +147,10 @@ export class DatabaseService {
           bound_user_username TEXT DEFAULT NULL,
           stop_push INTEGER DEFAULT 0,
           only_title INTEGER DEFAULT 0,
+          ntfy_enabled INTEGER DEFAULT 0,
+          ntfy_server_url TEXT DEFAULT 'https://ntfy.sh',
+          ntfy_topic TEXT DEFAULT NULL,
+          ntfy_token TEXT DEFAULT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
@@ -206,6 +230,8 @@ export class DatabaseService {
         CREATE INDEX IF NOT EXISTS idx_keywords_sub_created_at ON keywords_sub(created_at)
       `).run();
 
+      await this.ensureBaseConfigColumns();
+
       console.log('数据库表初始化完成');
     } catch (error) {
       console.error('数据库表初始化失败:', error);
@@ -229,8 +255,8 @@ export class DatabaseService {
 
   async createBaseConfig(config: Omit<BaseConfig, 'id' | 'created_at' | 'updated_at'>): Promise<BaseConfig> {
     const result = await this.db.prepare(`
-      INSERT INTO base_config (username, password, bot_token, chat_id, bound_user_name, bound_user_username, stop_push, only_title)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO base_config (username, password, bot_token, chat_id, bound_user_name, bound_user_username, stop_push, only_title, ntfy_enabled, ntfy_server_url, ntfy_topic, ntfy_token)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       RETURNING *
     `).bind(
       config.username,
@@ -240,7 +266,11 @@ export class DatabaseService {
       config.bound_user_name || null,
       config.bound_user_username || null,
       config.stop_push,
-      config.only_title
+      config.only_title,
+      config.ntfy_enabled || 0,
+      config.ntfy_server_url || 'https://ntfy.sh',
+      config.ntfy_topic || null,
+      config.ntfy_token || null
     ).first();
     
     // 清理相关缓存
@@ -250,6 +280,8 @@ export class DatabaseService {
   }
 
   async updateBaseConfig(config: Partial<BaseConfig>): Promise<BaseConfig | null> {
+    await this.ensureBaseConfigColumns();
+
     const updates: string[] = [];
     const values: any[] = [];
 
@@ -284,6 +316,22 @@ export class DatabaseService {
     if (config.only_title !== undefined) {
       updates.push('only_title = ?');
       values.push(config.only_title);
+    }
+    if (config.ntfy_enabled !== undefined) {
+      updates.push('ntfy_enabled = ?');
+      values.push(config.ntfy_enabled);
+    }
+    if (config.ntfy_server_url !== undefined) {
+      updates.push('ntfy_server_url = ?');
+      values.push(config.ntfy_server_url || null);
+    }
+    if (config.ntfy_topic !== undefined) {
+      updates.push('ntfy_topic = ?');
+      values.push(config.ntfy_topic || null);
+    }
+    if (config.ntfy_token !== undefined) {
+      updates.push('ntfy_token = ?');
+      values.push(config.ntfy_token || null);
     }
 
     if (updates.length === 0) {

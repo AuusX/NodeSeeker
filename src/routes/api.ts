@@ -1,9 +1,10 @@
 import { Hono } from 'hono'
 import { jwt } from 'hono/jwt'
-import { DatabaseService } from '../services/database'
+import { BaseConfig, DatabaseService } from '../services/database'
 import { AuthService } from '../services/auth'
 import { RSSService } from '../services/rss'
 import { TelegramService } from '../services/telegram'
+import { NtfyService } from '../services/ntfy'
 import { MatcherService } from '../services/matcher'
 import { performanceMonitor, withPerformanceMonitoring } from '../services/performance'
 
@@ -49,6 +50,55 @@ const jwtMiddleware = async (c: any, next: any) => {
 // 应用JWT中间件到所有API路由
 apiRoutes.use('*', jwtMiddleware)
 
+function hasNtfyFields(body: any): boolean {
+  return ['ntfy_enabled', 'ntfy_server_url', 'ntfy_topic', 'ntfy_token', 'clear_ntfy_token']
+    .some(field => Object.prototype.hasOwnProperty.call(body, field))
+}
+
+function normalizeNtfySettings(body: any): { success: true; data: Partial<BaseConfig> } | { success: false; message: string } {
+  const ntfyEnabled = body.ntfy_enabled ? 1 : 0
+  const serverUrl = ((typeof body.ntfy_server_url === 'string' ? body.ntfy_server_url : '') || 'https://ntfy.sh')
+    .trim()
+    .replace(/\/+$/, '')
+  const topic = (typeof body.ntfy_topic === 'string' ? body.ntfy_topic : '').trim()
+
+  try {
+    const url = new URL(serverUrl)
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      return { success: false, message: 'ntfy 服务地址必须使用 http 或 https' }
+    }
+  } catch (error) {
+    return { success: false, message: 'ntfy 服务地址格式无效' }
+  }
+
+  if (ntfyEnabled === 1 && !topic) {
+    return { success: false, message: '启用 ntfy 推送时必须填写 topic' }
+  }
+
+  const data: Partial<BaseConfig> = {
+    ntfy_enabled: ntfyEnabled,
+    ntfy_server_url: serverUrl,
+    ntfy_topic: topic || null
+  }
+
+  if (typeof body.ntfy_token === 'string' && body.ntfy_token.trim().length > 0) {
+    data.ntfy_token = body.ntfy_token.trim()
+  }
+  if (body.clear_ntfy_token === true) {
+    data.ntfy_token = null
+  }
+
+  return { success: true, data }
+}
+
+function toSafeConfig(config: BaseConfig) {
+  const { password, ntfy_token, ...safeConfig } = config
+  return {
+    ...safeConfig,
+    ntfy_token_configured: !!ntfy_token
+  }
+}
+
 // 获取基础配置
 apiRoutes.get('/config', async (c) => {
   try {
@@ -61,13 +111,10 @@ apiRoutes.get('/config', async (c) => {
         message: '配置不存在'
       }, 404)
     }
-    
-    // 不返回密码
-    const { password, ...safeConfig } = config
-    
+
     return c.json({
       success: true,
-      data: safeConfig
+      data: toSafeConfig(config)
     })
   } catch (error) {
     return c.json({
@@ -82,13 +129,26 @@ apiRoutes.put('/config', async (c) => {
   try {
     const body = await c.req.json()
     const { chat_id, stop_push, only_title } = body
-    
+
     const dbService = c.get('dbService')
-    const config = await dbService.updateBaseConfig({
+    const updateData: Partial<BaseConfig> = {
       chat_id,
-      stop_push: stop_push ? 1 : 0,
-      only_title: only_title ? 1 : 0
-    })
+      stop_push: stop_push !== undefined ? (stop_push ? 1 : 0) : undefined,
+      only_title: only_title !== undefined ? (only_title ? 1 : 0) : undefined
+    }
+
+    if (hasNtfyFields(body)) {
+      const ntfySettings = normalizeNtfySettings(body)
+      if (!ntfySettings.success) {
+        return c.json({
+          success: false,
+          message: ntfySettings.message
+        }, 400)
+      }
+      Object.assign(updateData, ntfySettings.data)
+    }
+
+    const config = await dbService.updateBaseConfig(updateData)
     
     if (!config) {
       return c.json({
@@ -97,12 +157,9 @@ apiRoutes.put('/config', async (c) => {
       }, 500)
     }
     
-    // 不返回密码
-    const { password, ...safeConfig } = config
-    
     return c.json({
       success: true,
-      data: safeConfig,
+      data: toSafeConfig(config),
       message: '配置更新成功'
     })
   } catch (error) {
@@ -204,12 +261,25 @@ apiRoutes.put('/telegram/push-settings', async (c) => {
   try {
     const body = await c.req.json()
     const { stop_push, only_title } = body
-    
+
     const dbService = c.get('dbService')
-    const config = await dbService.updateBaseConfig({
+    const updateData: Partial<BaseConfig> = {
       stop_push: stop_push ? 1 : 0,
       only_title: only_title ? 1 : 0
-    })
+    }
+
+    if (hasNtfyFields(body)) {
+      const ntfySettings = normalizeNtfySettings(body)
+      if (!ntfySettings.success) {
+        return c.json({
+          success: false,
+          message: ntfySettings.message
+        }, 400)
+      }
+      Object.assign(updateData, ntfySettings.data)
+    }
+
+    const config = await dbService.updateBaseConfig(updateData)
     
     if (!config) {
       return c.json({
@@ -223,13 +293,52 @@ apiRoutes.put('/telegram/push-settings', async (c) => {
       message: '推送设置更新成功',
       data: {
         stop_push: config.stop_push === 1,
-        only_title: config.only_title === 1
+        only_title: config.only_title === 1,
+        ntfy_enabled: config.ntfy_enabled === 1,
+        ntfy_server_url: config.ntfy_server_url || 'https://ntfy.sh',
+        ntfy_topic: config.ntfy_topic || '',
+        ntfy_token_configured: !!config.ntfy_token
       }
     })
   } catch (error) {
     return c.json({
       success: false,
       message: `更新推送设置失败: ${error}`
+    }, 500)
+  }
+})
+
+// 发送 ntfy 测试消息
+apiRoutes.post('/ntfy/test', async (c) => {
+  try {
+    const dbService = c.get('dbService')
+    const config = await dbService.getBaseConfig()
+    const ntfyService = new NtfyService()
+
+    if (!ntfyService.isConfigured(config)) {
+      return c.json({
+        success: false,
+        message: '请先启用 ntfy 并填写 topic'
+      }, 400)
+    }
+
+    const result = await ntfyService.sendTest(config!)
+
+    if (!result) {
+      return c.json({
+        success: false,
+        message: 'ntfy 测试推送失败，请检查服务地址、topic 或访问令牌'
+      }, 400)
+    }
+
+    return c.json({
+      success: true,
+      message: 'ntfy 测试推送成功'
+    })
+  } catch (error) {
+    return c.json({
+      success: false,
+      message: `ntfy 测试推送失败: ${error}`
     }, 500)
   }
 })
@@ -695,16 +804,9 @@ apiRoutes.get('/stats', async (c) => {
   try {
     const dbService = c.get('dbService')
     const config = await dbService.getBaseConfig()
-    
-    if (!config || !config.bot_token) {
-      return c.json({
-        success: false,
-        message: '请先配置Bot Token'
-      }, 400)
-    }
-    
-    const telegramService = new TelegramService(dbService, config.bot_token)
-    const matcherService = new MatcherService(dbService, telegramService)
+    const ntfyService = new NtfyService()
+    const telegramService = config?.bot_token ? new TelegramService(dbService, config.bot_token) : undefined
+    const matcherService = new MatcherService(dbService, telegramService, ntfyService)
     
     const stats = await matcherService.getMatchStats()
     

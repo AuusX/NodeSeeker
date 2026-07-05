@@ -122,6 +122,10 @@ GET /api/config
     "chat_id": "123456789",
     "stop_push": 0,
     "only_title": 0,
+    "ntfy_enabled": 1,
+    "ntfy_server_url": "https://ntfy.sh",
+    "ntfy_topic": "your-topic",
+    "ntfy_token_configured": true,
     "created_at": "2024-01-01T00:00:00.000Z",
     "updated_at": "2024-01-01T00:00:00.000Z"
   }
@@ -140,7 +144,11 @@ PUT /api/config
   "bot_token": "123456:ABC-DEF...",
   "chat_id": "123456789",
   "stop_push": false,
-  "only_title": false
+  "only_title": false,
+  "ntfy_enabled": true,
+  "ntfy_server_url": "https://ntfy.sh",
+  "ntfy_topic": "your-topic",
+  "ntfy_token": "tk_xxx"
 }
 ```
 
@@ -361,9 +369,15 @@ PUT /api/telegram/push-settings
 ```json
 {
   "stop_push": false,
-  "only_title": true
+  "only_title": true,
+  "ntfy_enabled": true,
+  "ntfy_server_url": "https://ntfy.sh",
+  "ntfy_topic": "your-topic",
+  "ntfy_token": "tk_xxx"
 }
 ```
+
+`ntfy_token` 可选；留空时不会覆盖已保存的访问令牌。
 
 **响应**:
 ```json
@@ -372,8 +386,28 @@ PUT /api/telegram/push-settings
   "message": "推送设置更新成功",
   "data": {
     "stop_push": false,
-    "only_title": true
+    "only_title": true,
+    "ntfy_enabled": true,
+    "ntfy_server_url": "https://ntfy.sh",
+    "ntfy_topic": "your-topic",
+    "ntfy_token_configured": true
   }
+}
+```
+
+### 测试 ntfy 推送
+
+```http
+POST /api/ntfy/test
+```
+
+**描述**: 向当前保存的 ntfy topic 发送一条测试消息。
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "ntfy 测试推送成功"
 }
 ```
 
@@ -539,6 +573,10 @@ interface BaseConfig {
   chat_id: string;
   stop_push: number; // 0: 启用, 1: 停用
   only_title: number; // 0: 匹配标题和内容, 1: 只匹配标题
+  ntfy_enabled?: number; // 0: 禁用, 1: 启用
+  ntfy_server_url?: string;
+  ntfy_topic?: string;
+  ntfy_token?: string;
   created_at?: string;
   updated_at?: string;
 }

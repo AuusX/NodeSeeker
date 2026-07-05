@@ -12,7 +12,7 @@ Docker 版本请移步 ➡️ [NodeSeeker-docker](https://github.com/ljnchn/Node
 
 - 🔄 **自动 RSS 抓取**：定时抓取 NodeSeek 社区 RSS 数据，确保信息不遗漏。
 - 🎯 **智能关键词匹配**：支持多关键词组合匹配，可按创建者和分类进行精准过滤。
-- 📱 **Telegram Bot 推送**：实时将匹配的文章推送到您的 Telegram，随时随地掌握动态。
+- 📱 **多通道推送**：支持 Telegram Bot 和 ntfy，实时推送匹配文章。
 - 🌐 **Web 管理界面**：提供直观的 Web 操作界面，轻松管理订阅规则和系统配置。
 - ⚡ **高性能架构**：基于 Cloudflare Workers 构建，享受全球边缘网络的低延迟和高可用性。
 - 🗄️ **D1 数据库**：使用 Cloudflare 原生 D1 数据库存储数据，稳定可靠。
@@ -25,7 +25,7 @@ Docker 版本请移步 ➡️ [NodeSeeker-docker](https://github.com/ljnchn/Node
 - **数据库**：Cloudflare D1 (SQLite)
 - **前端**：原生 HTML/CSS/JavaScript
 - **认证**：JWT (密码使用 BCrypt 加密)
-- **推送**：Telegram Bot API
+- **推送**：Telegram Bot API、ntfy
 - **RSS 解析**：rss-parser
 
 ## 🚀 部署指南
@@ -114,6 +114,16 @@ Docker 版本请移步 ➡️ [NodeSeeker-docker](https://github.com/ljnchn/Node
     - 在「推送设置」区域，您可以管理消息推送。
     - **停止/恢复推送**：随时暂停或恢复所有消息推送。
     - **只匹配标题**：设置是否仅在文章标题中搜索关键词。
+
+### 3. ntfy 推送设置
+
+1. 在 Web 界面进入「基础设置」。
+2. 在「推送设置」区域启用 ntfy。
+3. 填写 ntfy 服务地址，默认可使用 `https://ntfy.sh`。
+4. 填写 Topic；如果使用私有 topic 或自建 ntfy 鉴权，填写访问令牌。
+5. 保存后点击「测试 ntfy」确认推送可达。
+
+启用后，匹配成功的文章会发送到已配置的 ntfy topic。Telegram 和 ntfy 可同时启用；任一通道发送成功后，文章会标记为已推送。
 
 #### Bot 命令
 

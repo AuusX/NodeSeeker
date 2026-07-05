@@ -9,6 +9,10 @@ CREATE TABLE IF NOT EXISTS base_config (
   bound_user_username TEXT DEFAULT NULL,
   stop_push INTEGER DEFAULT 0,
   only_title INTEGER DEFAULT 0,
+  ntfy_enabled INTEGER DEFAULT 0,
+  ntfy_server_url TEXT DEFAULT 'https://ntfy.sh',
+  ntfy_topic TEXT DEFAULT NULL,
+  ntfy_token TEXT DEFAULT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

@@ -111,6 +111,9 @@ function initEventListeners() {
     
     // 刷新状态
     document.getElementById('refreshInfoBtn').addEventListener('click', refreshBotInfo);
+
+    // 测试 ntfy 推送
+    document.getElementById('testNtfyBtn').addEventListener('click', testNtfyConnection);
     
     // 解除用户绑定 - 使用事件委托
     document.addEventListener('click', function(e) {
@@ -383,6 +386,16 @@ function populateConfigForm(config) {
     // 只填充推送设置表单
     document.getElementById('stopPush').checked = config.stop_push === 1;
     document.getElementById('onlyTitle').checked = config.only_title === 1;
+    document.getElementById('ntfyEnabled').checked = config.ntfy_enabled === 1;
+    document.getElementById('ntfyServerUrl').value = config.ntfy_server_url || 'https://ntfy.sh';
+    document.getElementById('ntfyTopic').value = config.ntfy_topic || '';
+    document.getElementById('ntfyToken').value = '';
+
+    const ntfyTokenStatus = document.getElementById('ntfyTokenStatus');
+    if (ntfyTokenStatus) {
+        ntfyTokenStatus.textContent = config.ntfy_token_configured ? '访问令牌已配置' : '访问令牌未配置';
+        ntfyTokenStatus.style.color = config.ntfy_token_configured ? '#2e7d32' : '#666';
+    }
 }
 
 // 处理 Bot Token 设置
@@ -449,6 +462,15 @@ async function handlePushSettingsSubmit(e) {
     const formData = new FormData(e.target);
     const stopPush = formData.get('stopPush') === 'on';
     const onlyTitle = formData.get('onlyTitle') === 'on';
+    const ntfyEnabled = formData.get('ntfyEnabled') === 'on';
+    const ntfyServerUrl = (formData.get('ntfyServerUrl') || 'https://ntfy.sh').trim();
+    const ntfyTopic = (formData.get('ntfyTopic') || '').trim();
+    const ntfyToken = (formData.get('ntfyToken') || '').trim();
+
+    if (ntfyEnabled && !ntfyTopic) {
+        showMessage('启用 ntfy 推送时必须填写 topic', 'error');
+        return;
+    }
 
     const submitBtn = e.target.querySelector('button[type="submit"]');
     const originalText = submitBtn.innerHTML;
@@ -456,15 +478,30 @@ async function handlePushSettingsSubmit(e) {
     submitBtn.disabled = true;
 
     try {
-        const response = await apiRequest('/api/telegram/push-settings', 'PUT', {
+        const payload = {
             stop_push: stopPush,
-            only_title: onlyTitle
-        });
+            only_title: onlyTitle,
+            ntfy_enabled: ntfyEnabled,
+            ntfy_server_url: ntfyServerUrl,
+            ntfy_topic: ntfyTopic
+        };
+
+        if (ntfyToken) {
+            payload.ntfy_token = ntfyToken;
+        }
+
+        const response = await apiRequest('/api/telegram/push-settings', 'PUT', payload);
 
         if (response.success) {
             showMessage(response.message, 'success');
             currentConfig.stop_push = stopPush ? 1 : 0;
             currentConfig.only_title = onlyTitle ? 1 : 0;
+            currentConfig.ntfy_enabled = response.data.ntfy_enabled ? 1 : 0;
+            currentConfig.ntfy_server_url = response.data.ntfy_server_url;
+            currentConfig.ntfy_topic = response.data.ntfy_topic;
+            currentConfig.ntfy_token_configured = response.data.ntfy_token_configured;
+            document.getElementById('ntfyToken').value = '';
+            populateConfigForm(currentConfig);
         } else {
             showMessage(response.message || '推送设置更新失败', 'error');
         }
@@ -474,6 +511,35 @@ async function handlePushSettingsSubmit(e) {
     } finally {
         submitBtn.innerHTML = originalText;
         submitBtn.disabled = false;
+    }
+}
+
+// 测试 ntfy 推送
+async function testNtfyConnection() {
+    if (currentConfig.ntfy_enabled !== 1 || !currentConfig.ntfy_topic) {
+        showMessage('请先保存并启用 ntfy 推送设置', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('testNtfyBtn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="btn-icon">⏳</span>测试中...';
+    btn.disabled = true;
+
+    try {
+        const response = await apiRequest('/api/ntfy/test', 'POST');
+
+        if (response.success) {
+            showMessage(response.message || 'ntfy 测试推送成功', 'success');
+        } else {
+            showMessage(response.message || 'ntfy 测试推送失败', 'error');
+        }
+    } catch (error) {
+        console.error('ntfy 测试推送失败:', error);
+        showMessage('ntfy 测试推送失败', 'error');
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
     }
 }
 
